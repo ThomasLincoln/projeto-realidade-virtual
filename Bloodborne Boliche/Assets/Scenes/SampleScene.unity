@@ -174,6 +174,8 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   moveForce: 4
+  throwForceMultiplier: 20
+  minThrowThreshold: 0.1
 --- !u!54 &291886799
 Rigidbody:
   m_ObjectHideFlags: 0
@@ -932,7 +934,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: -8679921383154817045, guid: 203551285f6f06c499fc98662d4ab49b, type: 3}
       propertyPath: m_LocalPosition.y
-      value: 0
+      value: 0.462
       objectReference: {fileID: 0}
     - target: {fileID: -8679921383154817045, guid: 203551285f6f06c499fc98662d4ab49b, type: 3}
       propertyPath: m_LocalPosition.z
