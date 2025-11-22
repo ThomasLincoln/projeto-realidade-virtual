@@ -2,31 +2,27 @@ using UnityEngine;
 
 public class BallController : MonoBehaviour
 {
-    // --- Controle de Movimento (Teclado) ---
-    [Header("Controle de Movimento")]
-    [SerializeField]
-    private float moveForce = 10f;
-    // NOVO: Velocidade extra para forçar a rotação visual
-    [SerializeField]
-    private float rotationSpeed = 10f; 
-    private Vector3 moveDirection;
+    // --- Controle de Movimento ---
+    [Header("Configurações de Movimento")]
+    [SerializeField] private float moveForce = 8f; // Reduzi um pouco
+    [SerializeField] private float rotationSpeed = 5f; // Reduzi para suavizar
+    
+    // --- Configurações de Física ---
+    [Header("Limites de Física")]
+    [SerializeField] private float maxRotationSpeed = 25f; // Limite visual para não "bugar" o olho
 
-    // --- Controle de Arremesso (Giroscópio do CELULAR) ---
-    [Header("Controle de Arremesso (Giroscópio)")]
-    [SerializeField]
-    private float throwForceMultiplier = 20f;
-    [SerializeField]
-    private float spinMultiplier = 50f; // NOVO: Força do giro no arremesso
-
-    [SerializeField]
-    private float minThrowThreshold = 0.1f;
+    // --- Controle de Arremesso (Giroscópio) ---
+    [Header("Arremesso (Giroscópio)")]
+    [SerializeField] private float throwForceMultiplier = 20f;
+    [SerializeField] private float spinMultiplier = 50f;
+    [SerializeField] private float minThrowThreshold = 0.1f;
 
     private Gyroscope gyro;
     private bool isSwinging = false;
     private float peakAcceleration = 0f;
     private bool hasBeenThrown = false;
+    private Vector3 moveDirection;
 
-    // --- Componentes ---
     private Rigidbody rb;
     private Vector3 initialPosition;
     private Quaternion initialRotation;
@@ -36,9 +32,12 @@ public class BallController : MonoBehaviour
         rb = GetComponent<Rigidbody>();
         if (rb == null) Debug.LogError("Rigidbody faltando!");
 
-        // Garante que o Rigidbody não tenha limite máximo de rotação muito baixo
-        rb.maxAngularVelocity = 100f; 
+        // AQUI ESTÁ O SEGREDO 2:
+        // Limitamos a velocidade angular para o olho humano conseguir acompanhar
+        rb.maxAngularVelocity = maxRotationSpeed; 
 
+        // Dica: Garanta que no Inspector o Rigidbody esteja com 'Interpolate' ligado!
+        
         initialPosition = transform.position;
         initialRotation = transform.rotation;
 
@@ -57,27 +56,23 @@ public class BallController : MonoBehaviour
             return;
         }
 
-        // --- Lógica de Movimento (Teclado) ---
+        // --- Inputs ---
         float horizontalInput = Input.GetAxis("Horizontal");
         float verticalInput = Input.GetAxis("Vertical");
-        moveDirection = new Vector3(horizontalInput, 0, verticalInput);
+
+        // Direção corrigida (W/S no Eixo X)
+        moveDirection = new Vector3(verticalInput, 0, -horizontalInput);
 
         // --- Lógica de Arremesso ---
         if (gyro == null) return;
-
-        if (Input.GetMouseButtonDown(0))
-        {
-            isSwinging = true;
-            peakAcceleration = 0f;
-        }
-
+        
+        // (Lógica do mouse mantida igual...)
+        if (Input.GetMouseButtonDown(0)) { isSwinging = true; peakAcceleration = 0f; }
+        
         if (isSwinging)
         {
-            float currentAccelerationZ = Mathf.Abs(gyro.userAcceleration.z);
-            if (currentAccelerationZ > peakAcceleration)
-            {
-                peakAcceleration = currentAccelerationZ;
-            }
+            float currentAccel = Mathf.Abs(gyro.userAcceleration.z);
+            if (currentAccel > peakAcceleration) peakAcceleration = currentAccel;
         }
 
         if (Input.GetMouseButtonUp(0))
@@ -87,48 +82,42 @@ public class BallController : MonoBehaviour
         }
     }
 
+    void FixedUpdate()
+    {
+        if (rb != null && !hasBeenThrown)
+        {
+            // Move a bola
+            rb.AddForce(moveDirection * moveForce);
+
+            // APLICAÇÃO DE ROTAÇÃO MAIS SUAVE:
+            if (moveDirection != Vector3.zero)
+            {
+                Vector3 rotationAxis = Vector3.Cross(Vector3.up, moveDirection);
+                
+                // Mudança: Usamos ForceMode.Acceleration ignora a massa para ser mais fluido
+                // E não multiplicamos mais pelo moveForce, para ter controle separado
+                rb.AddTorque(rotationAxis * rotationSpeed, ForceMode.Acceleration);
+            }
+        }
+    }
+
     void ThrowBall()
     {
         float throwForce = peakAcceleration * throwForceMultiplier;
-
         if (peakAcceleration < minThrowThreshold) return;
 
         hasBeenThrown = true;
-
-        // 1. Aplica a força para frente (Empurrão)
         rb.AddForce(transform.forward * throwForce, ForceMode.Impulse);
-
-        // 2. NOVO: Aplica TORQUE (Rotação) para a bola sair girando
-        // Usamos 'transform.right' como eixo para a bola girar para frente
         rb.AddTorque(transform.right * throwForce * spinMultiplier, ForceMode.Impulse);
     }
 
     private void ResetBall()
     {
-        // Nota: Unity 6 usa 'linearVelocity', versões antigas usam 'velocity'
-        rb.linearVelocity = Vector3.zero; 
-        rb.angularVelocity = Vector3.zero; // Zera o giro
-        
+        rb.linearVelocity = Vector3.zero;
+        rb.angularVelocity = Vector3.zero;
         transform.position = initialPosition;
         transform.rotation = initialRotation;
         hasBeenThrown = false;
         moveDirection = Vector3.zero;
-    }
-
-    void FixedUpdate()
-    {
-        if (rb != null && !hasBeenThrown)
-        {
-            // Move a bola (Empurrão)
-            rb.AddForce(moveDirection * moveForce);
-
-            // NOVO: Adiciona rotação manual enquanto move com WASD
-            // O cálculo Vector3.Cross descobre o eixo de rotação correto baseado na direção
-            if (moveDirection != Vector3.zero)
-            {
-                Vector3 rotationAxis = Vector3.Cross(Vector3.up, moveDirection);
-                rb.AddTorque(rotationAxis * rotationSpeed * moveForce);
-            }
-        }
     }
 }
