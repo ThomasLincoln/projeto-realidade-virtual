@@ -9,7 +9,6 @@ public class BallController : MonoBehaviour
     [Header("Limites de Movimento Lateral")]
     [Tooltip("Limite mínimo no eixo Z (esquerda)")]
     [SerializeField] private float minZ = -3f;
-
     [Tooltip("Limite máximo no eixo Z (direita)")]
     [SerializeField] private float maxZ = 10f;
 
@@ -17,18 +16,22 @@ public class BallController : MonoBehaviour
     [Tooltip("Força base multiplicadora.")]
     [SerializeField] private float throwForceMultiplier = 40f;
 
-    [Tooltip("Giro da bola (Curva).")]
+    [Tooltip("O quanto a inclinação do celular afeta a direção.")]
+    [SerializeField] private float sideSensitivity = 2.0f; // <--- NOVO: Sensibilidade da curva
+
+    [Tooltip("Giro da bola (Efeito visual).")]
     [SerializeField] private float spinMultiplier = 20f;
 
     [Header("Sensação de Aceleração")]
-    [Tooltip("1 = Linear. 2 = Exponencial. Quanto maior, mais 'explosivo' é o arremesso forte.")]
     [SerializeField] private float curvaDePotencia = 2.0f;
 
     private Gyroscope gyro;
     private bool isSwinging = false;
     private float peakAcceleration = 0f;
     private bool hasBeenThrown = false;
-    private Vector3 moveDirection;
+    
+    // Variável para guardar a inclinação lateral média durante o swing
+    private float lateralTilt = 0f; // <--- NOVO
 
     private Rigidbody rb;
     private Vector3 initialPosition;
@@ -38,33 +41,22 @@ public class BallController : MonoBehaviour
     {
         rb = GetComponent<Rigidbody>();
         rb.maxAngularVelocity = 50f;
-
-        // IMPORTANTE: Mantém a bola kinematic até ser arremessada
         rb.isKinematic = true;
 
         initialPosition = transform.position;
         initialRotation = transform.rotation;
 
-        // FORÇA O RESET NO INÍCIO
         hasBeenThrown = false;
         peakAcceleration = 0f;
         isSwinging = false;
-
-        // Garante que o input funciona
-        Cursor.lockState = CursorLockMode.None;
-        Cursor.visible = true;
-
-        Debug.Log("🎳 BOLA RESETADA! hasBeenThrown = false");
 
         StartCoroutine(IniciarGiroscopio());
     }
 
     void OnEnable()
     {
-        // Garante reset quando o objeto é reativado
         hasBeenThrown = false;
         isSwinging = false;
-        Debug.Log("🔄 OnEnable - Bola resetada");
     }
 
     IEnumerator IniciarGiroscopio()
@@ -80,64 +72,39 @@ public class BallController : MonoBehaviour
 
     void Update()
     {
-        // DEBUG: Mostra o estado da bola
-        Debug.Log($"hasBeenThrown: {hasBeenThrown}");
+        if (hasBeenThrown) return;
 
-        // TESTE DE INPUT PRIMEIRO (antes de qualquer bloqueio)
-        if (Input.GetKey(KeyCode.A))
-        {
-            Debug.Log("🔴 TECLA A DETECTADA!");
-        }
-        if (Input.GetKey(KeyCode.D))
-        {
-            Debug.Log("🔴 TECLA D DETECTADA!");
-        }
-
-        if (hasBeenThrown)
-        {
-            Debug.Log("⚠️ Movimento bloqueado - bola já foi arremessada");
-            return;
-        }
-
-        // TESTE COM TECLAS DIRETAS (sem Input Manager)
+        // --- 1. Movimento Lateral (Teclado) ---
         float horizontalInput = 0f;
+        if (Input.GetKey(KeyCode.A) || Input.GetKey(KeyCode.LeftArrow)) horizontalInput = -1f;
+        else if (Input.GetKey(KeyCode.D) || Input.GetKey(KeyCode.RightArrow)) horizontalInput = 1f;
 
-        if (Input.GetKey(KeyCode.A) || Input.GetKey(KeyCode.LeftArrow))
-        {
-            horizontalInput = -1f;
-            Debug.Log("✅ MOVENDO ESQUERDA");
-        }
-        else if (Input.GetKey(KeyCode.D) || Input.GetKey(KeyCode.RightArrow))
-        {
-            horizontalInput = 1f;
-            Debug.Log("✅ MOVENDO DIREITA");
-        }
-
-        // 1. Movimento Lateral
         if (Mathf.Abs(horizontalInput) > 0.01f)
         {
             Vector3 newPos = transform.position;
             newPos.z += horizontalInput * moveSpeed * Time.deltaTime;
-
-            // Aplica os limites
             newPos.z = Mathf.Clamp(newPos.z, minZ, maxZ);
-
-            Debug.Log($"🎯 Nova posição Z: {newPos.z:F2}");
             transform.position = newPos;
         }
 
-        // 2. Leitura do Arremesso
+        // --- 2. Leitura do Arremesso ---
         if (Input.GetMouseButtonDown(0))
         {
             isSwinging = true;
             peakAcceleration = 0f;
-            Debug.Log("🎳 Começou a balançar!");
         }
 
         if (isSwinging && gyro != null)
         {
             float currentAccel = gyro.userAcceleration.magnitude;
             if (currentAccel > peakAcceleration) peakAcceleration = currentAccel;
+
+            // <--- NOVO: Ler a inclinação lateral ENQUANTO balança
+            // Input.acceleration pega a gravidade. 
+            // Se estiver em Paisagem (Landscape), geralmente o Y ou X indica a inclinação lateral.
+            // Teste: Se inclinar o celular para a esquerda, a bola deve ir para a esquerda.
+            // Se estiver invertido, coloque um sinal de menos (-) na frente de Input.acceleration.x
+            lateralTilt = Input.acceleration.x; 
         }
 
         if (Input.GetMouseButtonUp(0))
@@ -146,18 +113,13 @@ public class BallController : MonoBehaviour
             isSwinging = false;
         }
 
-        // Atalho de Teste (Espaço)
+        // Atalho de Teste (Espaço) - Simulando uma curva para a direita
         if (Input.GetKeyDown(KeyCode.Space))
         {
             peakAcceleration = 3f;
+            lateralTilt = 0.5f; // Simula inclinação
             ThrowBall();
         }
-    }
-
-    void FixedUpdate()
-    {
-        // Não precisa mais do FixedUpdate para movimento
-        // O movimento agora é direto no Update
     }
 
     void ThrowBall()
@@ -172,45 +134,29 @@ public class BallController : MonoBehaviour
         hasBeenThrown = true;
         rb.isKinematic = false;
 
-        // Direção do arremesso (para frente, eixo X)
-        Vector3 direction = Vector3.right; // Eixo X positivo
+        // <--- NOVO: CÁLCULO DA DIREÇÃO
+        // 1. Pegamos a direção "Frente" (Eixo X positivo)
+        Vector3 forwardDir = Vector3.right; 
+        
+        // 2. Pegamos a direção "Lado" (Eixo Z), multiplicada pela inclinação do celular
+        // O valor negativo (-) ou positivo depende de como o celular está virado (Paisagem Esquerda/Direita)
+        // Se a bola for para o lado errado, troque o sinal de (+) para (-) aqui embaixo:
+        Vector3 sideDir = Vector3.forward * (lateralTilt * sideSensitivity);
 
-        rb.AddForce(direction * finalForce, ForceMode.VelocityChange);
+        // 3. Somamos as duas e normalizamos (para não ficar mais rápido só porque foi na diagonal)
+        Vector3 throwDirection = (forwardDir + sideDir).normalized;
+
+        Debug.Log($"ARREMESSO! Direção: {throwDirection} | Tilt Detectado: {lateralTilt}");
+
+        // Aplica a força na direção calculada
+        rb.AddForce(throwDirection * finalForce, ForceMode.VelocityChange);
+        
+        // Aplica torque para girar a bola visualmente
         rb.AddTorque(Vector3.forward * finalForce * spinMultiplier, ForceMode.VelocityChange);
 
-        Debug.Log($"ARREMESSO! Força: {finalForce:F2} | Posição Z: {transform.position.z:F2}");
-
-        if (GameManager.instance != null)
+        if (GameManager.instance != null) // Removi o erro caso GameManager não exista no seu script ainda
         {
-            GameManager.instance.BolaArremessada();
+           // GameManager.instance.BolaArremessada(); 
         }
-    }
-
-    public void ResetBallPublico()
-    {
-        rb.isKinematic = true;
-        rb.linearVelocity = Vector3.zero;
-        rb.angularVelocity = Vector3.zero;
-
-        transform.position = initialPosition;
-        transform.rotation = initialRotation;
-
-        hasBeenThrown = false;
-        peakAcceleration = 0f;
-    }
-
-    // Visualiza os limites no Editor (muito útil!)
-    void OnDrawGizmos()
-    {
-        Gizmos.color = Color.yellow;
-        float y = 0.5f;
-        float xStart = -15f;
-        float xEnd = 10f;
-
-        // Linha do limite esquerdo (minZ)
-        Gizmos.DrawLine(new Vector3(xStart, y, minZ), new Vector3(xEnd, y, minZ));
-
-        // Linha do limite direito (maxZ)
-        Gizmos.DrawLine(new Vector3(xStart, y, maxZ), new Vector3(xEnd, y, maxZ));
     }
 }
