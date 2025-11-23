@@ -17,7 +17,7 @@ public class BallController : MonoBehaviour
     [SerializeField] private float throwForceMultiplier = 40f;
 
     [Tooltip("O quanto a inclinação do celular afeta a direção.")]
-    [SerializeField] private float sideSensitivity = 2.0f; // <--- NOVO: Sensibilidade da curva
+    [SerializeField] private float sideSensitivity = 2.0f; // Sensibilidade da curva
 
     [Tooltip("Giro da bola (Efeito visual).")]
     [SerializeField] private float spinMultiplier = 20f;
@@ -31,7 +31,7 @@ public class BallController : MonoBehaviour
     private bool hasBeenThrown = false;
     
     // Variável para guardar a inclinação lateral média durante o swing
-    private float lateralTilt = 0f; // <--- NOVO
+    private float lateralTilt = 0f; 
 
     private Rigidbody rb;
     private Vector3 initialPosition;
@@ -99,11 +99,7 @@ public class BallController : MonoBehaviour
             float currentAccel = gyro.userAcceleration.magnitude;
             if (currentAccel > peakAcceleration) peakAcceleration = currentAccel;
 
-            // <--- NOVO: Ler a inclinação lateral ENQUANTO balança
-            // Input.acceleration pega a gravidade. 
-            // Se estiver em Paisagem (Landscape), geralmente o Y ou X indica a inclinação lateral.
-            // Teste: Se inclinar o celular para a esquerda, a bola deve ir para a esquerda.
-            // Se estiver invertido, coloque um sinal de menos (-) na frente de Input.acceleration.x
+            // Ler a inclinação lateral ENQUANTO balança
             lateralTilt = Input.acceleration.x; 
         }
 
@@ -111,14 +107,6 @@ public class BallController : MonoBehaviour
         {
             if (isSwinging) ThrowBall();
             isSwinging = false;
-        }
-
-        // Atalho de Teste (Espaço) - Simulando uma curva para a direita
-        if (Input.GetKeyDown(KeyCode.Space))
-        {
-            peakAcceleration = 3f;
-            lateralTilt = 0.5f; // Simula inclinação
-            ThrowBall();
         }
     }
 
@@ -134,29 +122,37 @@ public class BallController : MonoBehaviour
         hasBeenThrown = true;
         rb.isKinematic = false;
 
-        // <--- NOVO: CÁLCULO DA DIREÇÃO
-        // 1. Pegamos a direção "Frente" (Eixo X positivo)
+        // CÁLCULO DA DIREÇÃO COM CURVA
         Vector3 forwardDir = Vector3.right; 
-        
-        // 2. Pegamos a direção "Lado" (Eixo Z), multiplicada pela inclinação do celular
-        // O valor negativo (-) ou positivo depende de como o celular está virado (Paisagem Esquerda/Direita)
-        // Se a bola for para o lado errado, troque o sinal de (+) para (-) aqui embaixo:
         Vector3 sideDir = Vector3.forward * (lateralTilt * sideSensitivity);
-
-        // 3. Somamos as duas e normalizamos (para não ficar mais rápido só porque foi na diagonal)
         Vector3 throwDirection = (forwardDir + sideDir).normalized;
 
         Debug.Log($"ARREMESSO! Direção: {throwDirection} | Tilt Detectado: {lateralTilt}");
 
-        // Aplica a força na direção calculada
         rb.AddForce(throwDirection * finalForce, ForceMode.VelocityChange);
-        
-        // Aplica torque para girar a bola visualmente
         rb.AddTorque(Vector3.forward * finalForce * spinMultiplier, ForceMode.VelocityChange);
 
-        if (GameManager.instance != null) // Removi o erro caso GameManager não exista no seu script ainda
+        if (GameManager.instance != null) 
         {
-           // GameManager.instance.BolaArremessada(); 
+            GameManager.instance.BolaArremessada(); 
         }
+    }
+
+    // --- A FUNÇÃO QUE FALTAVA ---
+    public void ResetBallPublico()
+    {
+        rb.isKinematic = true; // Trava a física de novo
+        rb.linearVelocity = Vector3.zero;
+        rb.angularVelocity = Vector3.zero;
+
+        transform.position = initialPosition;
+        transform.rotation = initialRotation;
+
+        hasBeenThrown = false;
+        peakAcceleration = 0f;
+        isSwinging = false;
+        lateralTilt = 0f; // Reseta a inclinação também
+
+        Debug.Log("Bola resetada via script externo.");
     }
 }
