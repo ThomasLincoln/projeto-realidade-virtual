@@ -7,17 +7,18 @@ public class BallController : MonoBehaviour
     [SerializeField] private float moveSpeed = 5f;
 
     [Header("Limites de Movimento Lateral")]
-    [Tooltip("Limite mínimo no eixo Z (esquerda)")]
     [SerializeField] private float minZ = -3f;
-    [Tooltip("Limite máximo no eixo Z (direita)")]
     [SerializeField] private float maxZ = 10f;
 
     [Header("Configurações de Arremesso")]
     [Tooltip("Força base multiplicadora.")]
     [SerializeField] private float throwForceMultiplier = 40f;
 
-    [Tooltip("O quanto a inclinação do celular afeta a direção.")]
-    [SerializeField] private float sideSensitivity = 2.0f; 
+    [Tooltip("Diminua este valor para a bola fazer menos curva.")]
+    [SerializeField] private float sideSensitivity = 0.5f; // <--- MUDANÇA 1: Valor padrão bem menor (era 2.0)
+
+    [Tooltip("Ignora inclinações pequenas (tremidas de mão). Aumente se a bola estiver indo para o lado sozinha.")]
+    [SerializeField] private float tiltDeadzone = 0.15f; // <--- MUDANÇA 2: Zona Morta
 
     [Tooltip("Giro da bola (Efeito visual).")]
     [SerializeField] private float spinMultiplier = 20f;
@@ -98,7 +99,19 @@ public class BallController : MonoBehaviour
             float currentAccel = gyro.userAcceleration.magnitude;
             if (currentAccel > peakAcceleration) peakAcceleration = currentAccel;
 
-            lateralTilt = Input.acceleration.x; 
+            // Ler a inclinação bruta
+            float rawTilt = Input.acceleration.x; 
+
+            // APLICANDO A ZONA MORTA (Deadzone)
+            // Se a inclinação for menor que 0.15, consideramos zero (ignora tremida)
+            if (Mathf.Abs(rawTilt) < tiltDeadzone)
+            {
+                lateralTilt = 0f;
+            }
+            else
+            {
+                lateralTilt = rawTilt;
+            }
         }
 
         if (Input.GetMouseButtonUp(0))
@@ -111,15 +124,13 @@ public class BallController : MonoBehaviour
     void FixedUpdate()
     {
         // --- BLOQUEIO ANTI-RETORNO ---
-        // Se a bola já foi jogada e a física tentar empurrá-la para trás (Eixo X negativo),
-        // nós zeramos a velocidade nesse eixo imediatamente.
         if (hasBeenThrown)
         {
-            // NOTA: Se sua Unity for antiga e der erro no 'linearVelocity', troque por 'velocity'
+            // Bloqueia se tentar voltar (velocidade X negativa)
             if (rb.linearVelocity.x < 0)
             {
                 Vector3 travada = rb.linearVelocity;
-                travada.x = 0f; // Bloqueia o retorno
+                travada.x = 0f; 
                 rb.linearVelocity = travada;
             }
         }
@@ -138,13 +149,15 @@ public class BallController : MonoBehaviour
         rb.isKinematic = false;
 
         Vector3 forwardDir = Vector3.right; 
+        
+        // Aqui usamos a sensibilidade reduzida
         Vector3 sideDir = Vector3.forward * (lateralTilt * sideSensitivity);
+        
         Vector3 throwDirection = (forwardDir + sideDir).normalized;
 
         rb.AddForce(throwDirection * finalForce, ForceMode.VelocityChange);
         
-        // DICA: Mudei para Vector3.back para garantir Topspin (giro para frente)
-        // Se usar Vector3.forward ela gira para trás (backspin) e freia.
+        // Torque para frente (Topspin)
         rb.AddTorque(Vector3.back * finalForce * spinMultiplier, ForceMode.VelocityChange);
 
         if (GameManager.instance != null) 
