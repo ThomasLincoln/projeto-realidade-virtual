@@ -17,7 +17,7 @@ public class BallController : MonoBehaviour
     [SerializeField] private float throwForceMultiplier = 40f;
 
     [Tooltip("O quanto a inclinação do celular afeta a direção.")]
-    [SerializeField] private float sideSensitivity = 2.0f; // Sensibilidade da curva
+    [SerializeField] private float sideSensitivity = 2.0f; 
 
     [Tooltip("Giro da bola (Efeito visual).")]
     [SerializeField] private float spinMultiplier = 20f;
@@ -30,7 +30,6 @@ public class BallController : MonoBehaviour
     private float peakAcceleration = 0f;
     private bool hasBeenThrown = false;
     
-    // Variável para guardar a inclinação lateral média durante o swing
     private float lateralTilt = 0f; 
 
     private Rigidbody rb;
@@ -99,7 +98,6 @@ public class BallController : MonoBehaviour
             float currentAccel = gyro.userAcceleration.magnitude;
             if (currentAccel > peakAcceleration) peakAcceleration = currentAccel;
 
-            // Ler a inclinação lateral ENQUANTO balança
             lateralTilt = Input.acceleration.x; 
         }
 
@@ -107,6 +105,23 @@ public class BallController : MonoBehaviour
         {
             if (isSwinging) ThrowBall();
             isSwinging = false;
+        }
+    }
+
+    void FixedUpdate()
+    {
+        // --- BLOQUEIO ANTI-RETORNO ---
+        // Se a bola já foi jogada e a física tentar empurrá-la para trás (Eixo X negativo),
+        // nós zeramos a velocidade nesse eixo imediatamente.
+        if (hasBeenThrown)
+        {
+            // NOTA: Se sua Unity for antiga e der erro no 'linearVelocity', troque por 'velocity'
+            if (rb.linearVelocity.x < 0)
+            {
+                Vector3 travada = rb.linearVelocity;
+                travada.x = 0f; // Bloqueia o retorno
+                rb.linearVelocity = travada;
+            }
         }
     }
 
@@ -122,15 +137,15 @@ public class BallController : MonoBehaviour
         hasBeenThrown = true;
         rb.isKinematic = false;
 
-        // CÁLCULO DA DIREÇÃO COM CURVA
         Vector3 forwardDir = Vector3.right; 
         Vector3 sideDir = Vector3.forward * (lateralTilt * sideSensitivity);
         Vector3 throwDirection = (forwardDir + sideDir).normalized;
 
-        Debug.Log($"ARREMESSO! Direção: {throwDirection} | Tilt Detectado: {lateralTilt}");
-
         rb.AddForce(throwDirection * finalForce, ForceMode.VelocityChange);
-        rb.AddTorque(Vector3.forward * finalForce * spinMultiplier, ForceMode.VelocityChange);
+        
+        // DICA: Mudei para Vector3.back para garantir Topspin (giro para frente)
+        // Se usar Vector3.forward ela gira para trás (backspin) e freia.
+        rb.AddTorque(Vector3.back * finalForce * spinMultiplier, ForceMode.VelocityChange);
 
         if (GameManager.instance != null) 
         {
@@ -138,10 +153,9 @@ public class BallController : MonoBehaviour
         }
     }
 
-    // --- A FUNÇÃO QUE FALTAVA ---
     public void ResetBallPublico()
     {
-        rb.isKinematic = true; // Trava a física de novo
+        rb.isKinematic = true;
         rb.linearVelocity = Vector3.zero;
         rb.angularVelocity = Vector3.zero;
 
@@ -151,8 +165,6 @@ public class BallController : MonoBehaviour
         hasBeenThrown = false;
         peakAcceleration = 0f;
         isSwinging = false;
-        lateralTilt = 0f; // Reseta a inclinação também
-
-        Debug.Log("Bola resetada via script externo.");
+        lateralTilt = 0f; 
     }
 }
