@@ -14,11 +14,11 @@ public class BallController : MonoBehaviour
     [Tooltip("Força base multiplicadora.")]
     [SerializeField] private float throwForceMultiplier = 40f;
 
-    [Tooltip("Diminua este valor para a bola fazer menos curva.")]
-    [SerializeField] private float sideSensitivity = 0.5f; // <--- MUDANÇA 1: Valor padrão bem menor (era 2.0)
+    [Tooltip("Sensibilidade da curva. Diminua se estiver muito forte.")]
+    [SerializeField] private float sideSensitivity = 0.5f; 
 
-    [Tooltip("Ignora inclinações pequenas (tremidas de mão). Aumente se a bola estiver indo para o lado sozinha.")]
-    [SerializeField] private float tiltDeadzone = 0.15f; // <--- MUDANÇA 2: Zona Morta
+    [Tooltip("Zona morta para ignorar tremidas leves da mão.")]
+    [SerializeField] private float tiltDeadzone = 0.15f;
 
     [Tooltip("Giro da bola (Efeito visual).")]
     [SerializeField] private float spinMultiplier = 20f;
@@ -74,10 +74,18 @@ public class BallController : MonoBehaviour
     {
         if (hasBeenThrown) return;
 
-        // --- 1. Movimento Lateral (Teclado) ---
+        // --- 1. Movimento Lateral (Teclado) INVERTIDO ---
         float horizontalInput = 0f;
-        if (Input.GetKey(KeyCode.A) || Input.GetKey(KeyCode.LeftArrow)) horizontalInput = -1f;
-        else if (Input.GetKey(KeyCode.D) || Input.GetKey(KeyCode.RightArrow)) horizontalInput = 1f;
+        
+        // MUDANÇA AQUI: Inverti os valores (1f e -1f)
+        if (Input.GetKey(KeyCode.A) || Input.GetKey(KeyCode.LeftArrow)) 
+        {
+            horizontalInput = 1f; // Antes era -1
+        }
+        else if (Input.GetKey(KeyCode.D) || Input.GetKey(KeyCode.RightArrow)) 
+        {
+            horizontalInput = -1f; // Antes era 1
+        }
 
         if (Mathf.Abs(horizontalInput) > 0.01f)
         {
@@ -99,11 +107,10 @@ public class BallController : MonoBehaviour
             float currentAccel = gyro.userAcceleration.magnitude;
             if (currentAccel > peakAcceleration) peakAcceleration = currentAccel;
 
-            // Ler a inclinação bruta
-            float rawTilt = Input.acceleration.x; 
+            // MUDANÇA AQUI: Adicionei o sinal de MENOS (-) para inverter a direção
+            float rawTilt = -Input.acceleration.x; 
 
-            // APLICANDO A ZONA MORTA (Deadzone)
-            // Se a inclinação for menor que 0.15, consideramos zero (ignora tremida)
+            // Aplica a zona morta
             if (Mathf.Abs(rawTilt) < tiltDeadzone)
             {
                 lateralTilt = 0f;
@@ -126,7 +133,6 @@ public class BallController : MonoBehaviour
         // --- BLOQUEIO ANTI-RETORNO ---
         if (hasBeenThrown)
         {
-            // Bloqueia se tentar voltar (velocidade X negativa)
             if (rb.linearVelocity.x < 0)
             {
                 Vector3 travada = rb.linearVelocity;
@@ -150,14 +156,14 @@ public class BallController : MonoBehaviour
 
         Vector3 forwardDir = Vector3.right; 
         
-        // Aqui usamos a sensibilidade reduzida
+        // Usa a inclinação invertida calculada no Update
         Vector3 sideDir = Vector3.forward * (lateralTilt * sideSensitivity);
         
         Vector3 throwDirection = (forwardDir + sideDir).normalized;
 
         rb.AddForce(throwDirection * finalForce, ForceMode.VelocityChange);
         
-        // Torque para frente (Topspin)
+        // Torque para frente
         rb.AddTorque(Vector3.back * finalForce * spinMultiplier, ForceMode.VelocityChange);
 
         if (GameManager.instance != null) 
